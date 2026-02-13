@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOA CUBE ARCHIVE</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="login-container" style="display: flex; justify-content: center; align-items: center; height: 100vh;">
+        <div style="border: 1px solid var(--text-color); padding: 40px; background: #000; box-shadow: 0 0 20px rgba(0,255,65,0.1);">
+            <h2 style="color: var(--text-color); text-align: center; margin-top: 0;">[ SYSTEM ACCESS ]</h2>
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <input type="text" id="login-id" placeholder="USER ID" style="background:#000; border:1px solid #444; color:#fff; padding:12px; width:250px; outline:none; font-family:inherit;">
+                <input type="password" id="login-pw" placeholder="PASSWORD" style="background:#000; border:1px solid #444; color:#fff; padding:12px; width:250px; outline:none; font-family:inherit;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="handleLogin()" style="flex: 1;">접속</button>
+                    <button class="btn" onclick="handleRegister()" style="flex: 1; border-color: #555; color: #555;">등록</button>
+                </div>
+            </div>
+            <p id="auth-msg" style="font-size: 11px; color: #ff4d4d; margin-top: 15px; text-align: center; height: 12px;"></p>
+        </div>
+    </div>
+
+    <div id="app-container" style="display: none;">
+        <div class="header-section">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 id="user-title" style="margin:0;">[ EBONY CUBE STORAGE ]</h2>
+                <button class="btn" onclick="logout()" style="border-color:#444; color:#666; padding: 5px 10px; font-size: 12px;">LOGOUT</button>
+            </div>
+            <div class="sync-box">
+                <input type="text" id="main-char" placeholder="캐릭터명 입력">
+                <button class="btn" onclick="fetchLoaData()">동기화</button>
+            </div>
+        </div>
+
+        <div id="char-list" class="char-container"></div>
+    </div>
+
+    <div id="cmd-modal">
+        <div class="cmd-header">
+            <span id="modal-title">C:\Users\LostArk\Status</span>
+            <span class="close-btn" onclick="closeModal()">[X]</span>
+        </div>
+        <div class="cmd-body">
+            <div class="cube-split-container">
+                <div class="cube-section">
+                    <div class="section-title">[ 금제 ]</div>
+                    <div id="grid-gum" class="cube-grid"></div>
+                </div>
+                <div class="cube-section">
+                    <div class="section-title">[ 해금 ]</div>
+                    <div id="grid-hae" class="cube-grid"></div>
+                </div>
+            </div>
+            <div class="cmd-line">
+                <span>C:\></span>
+                <input type="text" id="cmd-input" class="cmd-input" placeholder="1금제 5" autofocus>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-overlay" onclick="closeModal()"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
