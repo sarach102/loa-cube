@@ -1,7 +1,14 @@
+/**
+ * [2026-02-13] 최종 통합 버전 (데이터 내보내기/불러오기 추가)
+ * 1. 데이터 이관: JSON 파일 내보내기 및 불러오기 기능 구현
+ * 2. 레벨 표시 버그 수정: 콤마 제거 및 정규화
+ * 3. 보석 합성 및 재료 데이터 통합
+ * 4. ACTOR_ID 유지 및 세션 관리
+ */
+
 const LostarkApiKey = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyIsImtpZCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyJ9.eyJpc3MiOiJodHRwczovL2x1ZHkuZ2FtZS5vbnN0b3ZlLmNvbSIsImF1ZCI6Imh0dHBzOi8vbHVkeS5nYW1lLm9uc3RvdmUuY29tL3Jlc291cmNlcyIsImNsaWVudF9pZCI6IjEwMDAwMDAwMDAzMzkyMzYifQ.mJQIEV41gXwuDJzECKWhBGgYqIB3ikA0pYc82aKndYQE5ArlZ9r4ARyI8G-0ITpL6VndJZ2JtnQ89D5xNNy3XX5tk_07JLC5Zo4nBrd1S9o3YQxO6Tl9g4GStPGL-pjLAixv314i8leM8JVmbeSNhQecsPwRdoAFRnvuPJ5UX6bGs9qyRW-mOBLay47xOMUnmzvGCf8WnYzmwnldOejZNDLNjf0M2R4BAfdIrdXMASU8RL9JqoBZOjlyUcZmiNLlM2l3ShKuUAPdE0vRGcQfMh6B0l16Xkftlyau_b9iifjgAp9hVRXB4qnUJPK3gyD2oPSdLm_AWo_um1-Pc3R9-g";
 const DEFAULT_CHAR_IMG = "https://img.lostark.co.kr/armory/default_character.png";
 
-// --- [정밀 재료 데이터 테이블] ---
 const CUBE_REWARDS = {
     "1금제": { gemType: "멸홍", gemLvl: 2, gemQty: 7, leap: "위명돌", leapQty: 20, exp: 3000, sil: 79859, s1: 6, s2: 3, s3: 1 },
     "2금제": { gemType: "멸홍", gemLvl: 3, gemQty: 4, leap: "경명돌", leapQty: 15, exp: 9000, sil: 100142, s1: 8, s2: 4, s3: 2 },
@@ -9,7 +16,7 @@ const CUBE_REWARDS = {
     "4금제": { gemType: "멸홍", gemLvl: 3, gemQty: 8, leap: "찬명돌", leapQty: 14, exp: 13000, sil: 120518, s1: 12, s2: 7, s3: 3 },
     "5금제": { gemType: "멸홍", gemLvl: 3, gemQty: 9, leap: "찬명돌", leapQty: 25, exp: 13500, sil: 129802, s1: 13, s2: 8, s3: 4 },
     "1해금": { gemType: "겁작", gemLvl: 1, gemQty: 9, leap: "운돌", leapQty: 14, exp: 14000, sil: 140173, s4: 4, s5: 4 },
-    "2해금": { gemType: "겁작", gemLvl: 2, gemQty: 6, leap: "운돌", leapQty: 25, exp: 151741, s4: 5, s5: 5 },
+    "2해금": { gemType: "겁작", gemLvl: 2, gemQty: 6, leap: "운돌", leapQty: 25, exp: 14500, sil: 151741, s4: 5, s5: 5 },
     "3해금": { gemType: "겁작", gemLvl: 2, gemQty: 8, leap: "운돌", leapQty: 32, exp: 15000, sil: 161235, s4: 6, s5: 6 },
     "4해금": { gemType: "겁작", gemLvl: 2, gemQty: 11, leap: "운돌", leapQty: 41, exp: 15500, sil: 190000, s4: 8, s5: 8 }
 };
@@ -26,16 +33,57 @@ let currentEditingId = null;
 
 window.onload = function() {
     const session = localStorage.getItem(STORAGE_KEYS.SESSION);
-    if (session) {
-        currentUser = session;
-        loadUserData();
-        showMainApp();
-    } else {
-        showLoginForm();
-    }
+    if (session) { currentUser = session; loadUserData(); showMainApp(); } else { showLoginForm(); }
 };
 
-/** 보석 합성 로직 (3개당 1레벨 상승) */
+// --- [추가] 데이터 내보내기 (JSON 파일 다운로드) ---
+function exportData() {
+    const data = {
+        characters: characters,
+        excludedList: excludedList,
+        exportedAt: new Date().toISOString(),
+        user: currentUser
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `LOA_CUBE_DATA_${currentUser}_${new Date().toLocaleDateString()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// --- [추가] 데이터 불러오기 (JSON 파일 읽기) ---
+function importData() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = event => {
+            try {
+                const imported = JSON.parse(event.target.result);
+                if (imported.characters) {
+                    if (confirm("기존 데이터를 덮어쓰고 불러오시겠습니까?")) {
+                        characters = imported.characters;
+                        excludedList = imported.excludedList || [];
+                        saveUserData();
+                        alert("데이터를 성공적으로 불러왔습니다!");
+                    }
+                } else {
+                    alert("올바른 데이터 형식이 아닙니다.");
+                }
+            } catch (err) {
+                alert("파일 읽기 실패: " + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+// --- 보석 합성 로직 ---
 function calculateCombinedGems(baseGems) {
     let gems = { ...baseGems };
     for (let lvl = 1; lvl <= 9; lvl++) {
@@ -48,7 +96,7 @@ function calculateCombinedGems(baseGems) {
     return gems;
 }
 
-/** 메인 통계 렌더링 (재료 합계창 포함) */
+// --- 통계 렌더링 ---
 function renderStats() {
     const headerTitleSection = document.querySelector('.header-section > div:first-child');
     if (!headerTitleSection) return;
@@ -57,8 +105,20 @@ function renderStats() {
     if (!statsBox) {
         statsBox = document.createElement('div');
         statsBox.id = 'total-stats-box';
-        const logoutBtn = headerTitleSection.querySelector('button');
-        headerTitleSection.insertBefore(statsBox, logoutBtn);
+        
+        // 버튼 영역 (내보내기/불러오기 추가)
+        const btnContainer = document.createElement('div');
+        btnContainer.style.display = 'flex';
+        btnContainer.style.gap = '8px';
+        btnContainer.innerHTML = `
+            <button onclick="exportData()" style="background:#333; color:#fff; border:1px solid #555; padding:5px 10px; cursor:pointer; font-size:11px;">내보내기</button>
+            <button onclick="importData()" style="background:#333; color:#fff; border:1px solid #555; padding:5px 10px; cursor:pointer; font-size:11px;">불러오기</button>
+            <button onclick="logout()" style="background:#a00; color:#fff; border:none; padding:5px 10px; cursor:pointer; font-size:11px;">LOGOUT</button>
+        `;
+
+        headerTitleSection.innerHTML = ''; // 초기화 후 재구성
+        headerTitleSection.appendChild(statsBox);
+        headerTitleSection.appendChild(btnContainer);
     }
 
     let m_base = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0, 10:0};
@@ -122,8 +182,7 @@ function renderStats() {
                     <span style="color:#aaa;">• 실링: ${totalSil.toLocaleString()} | 카경: ${totalExp.toLocaleString()}</span>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
     headerTitleSection.style.cssText = "display:flex; align-items:center; justify-content:space-between; width:100%;";
 }
 
@@ -136,8 +195,8 @@ function renderCharacters() {
     characters.forEach(char => {
         const div = document.createElement('div');
         div.className = 'char-card';
-        const numLevel = parseFloat(char.level);
-        const displayLevel = isNaN(numLevel) || numLevel === 0 ? "?.??" : numLevel.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const numLevel = parseFloat(String(char.level || "0").replace(/,/g, ""));
+        const displayLevel = (isNaN(numLevel) || numLevel === 0) ? "?.??" : numLevel.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
         const gumHtml = GUM_TYPES.map(t => `<div style="display:flex; justify-content:space-between; font-size:11px; color:${char.cubes[t]>0?'#00ff41':'#444'};"><span>${t}:</span><b>${char.cubes[t]||0}</b></div>`).join('');
         const haeHtml = HAE_TYPES.map(t => `<div style="display:flex; justify-content:space-between; font-size:11px; color:${char.cubes[t]>0?'#00ccff':'#444'};"><span>${t}:</span><b>${char.cubes[t]||0}</b></div>`).join('');
@@ -159,25 +218,21 @@ function renderCharacters() {
     });
 }
 
-// --- 원정대 동기화 (API) ---
+// --- API 동기화 ---
 async function fetchLoaData() {
     const nameInput = document.getElementById('main-char').value.trim();
     if (!nameInput) return alert("캐릭터명을 입력하세요.");
-
     try {
         const res = await fetch(`https://developer-lostark.game.onstove.com/characters/${encodeURIComponent(nameInput)}/siblings`, {
             headers: { 'authorization': `Bearer ${LostarkApiKey}`, 'accept': 'application/json' }
         });
-        if (!res.ok) throw new Error(`API 통신 에러: ${res.status}`);
         const siblings = await res.json();
         if (!siblings) return;
-
         const updatedList = [];
         for (const char of siblings) {
             if (excludedList.includes(char.CharacterName)) continue;
             let itemLevel = String(char.ItemMaxLevel || "0").replace(/,/g, ""); 
             let charImage = DEFAULT_CHAR_IMG;
-
             try {
                 const pRes = await fetch(`https://developer-lostark.game.onstove.com/armories/characters/${encodeURIComponent(char.CharacterName)}/profiles`, {
                     headers: { 'authorization': `Bearer ${LostarkApiKey}`, 'accept': 'application/json' }
@@ -188,7 +243,6 @@ async function fetchLoaData() {
                     if (prof.ItemMaxLevel) itemLevel = String(prof.ItemMaxLevel).replace(/,/g, "");
                 }
             } catch(e) {}
-
             updatedList.push({
                 actorId: `ACTOR_${char.CharacterName}`,
                 name: char.CharacterName, server: char.ServerName, level: itemLevel, job: char.CharacterClassName, image: charImage,
@@ -202,20 +256,17 @@ async function fetchLoaData() {
     } catch (e) { alert(e.message); }
 }
 
-// --- 데이터 관리 기능 ---
+// --- 공통 기능 ---
 function loadUserData() {
     characters = JSON.parse(localStorage.getItem(`data_${currentUser}_chars`)) || [];
     excludedList = JSON.parse(localStorage.getItem(`data_${currentUser}_excl`)) || [];
 }
-
 function saveUserData() {
     localStorage.setItem(`data_${currentUser}_chars`, JSON.stringify(characters));
     localStorage.setItem(`data_${currentUser}_excl`, JSON.stringify(excludedList));
     renderAll();
 }
-
 function renderAll() { renderStats(); renderCharacters(); }
-
 function removeCharacter(id, name, event) {
     event.stopPropagation();
     if (confirm(`[${name}] 목록에서 제외하시겠습니까?`)) {
@@ -224,8 +275,6 @@ function removeCharacter(id, name, event) {
         saveUserData();
     }
 }
-
-// --- CMD 모달 로직 ---
 function openCmd(id) {
     currentEditingId = id;
     const char = characters.find(c => c.actorId === id);
@@ -233,9 +282,7 @@ function openCmd(id) {
     document.getElementById('cmd-modal').style.display = 'block';
     document.getElementById('modal-overlay').style.display = 'block';
     updateCubeDisplay();
-    setTimeout(() => document.getElementById('cmd-input').focus(), 50);
 }
-
 function updateCubeDisplay() {
     const char = characters.find(c => c.actorId === currentEditingId);
     const render = (types, gridId, color) => {
@@ -248,20 +295,15 @@ function updateCubeDisplay() {
     render(GUM_TYPES, 'grid-gum', '#00ff41');
     render(HAE_TYPES, 'grid-hae', '#00ccff');
 }
-
 function modifyCube(type, amt) {
     const char = characters.find(c => c.actorId === currentEditingId);
     char.cubes[type] = Math.max(0, (char.cubes[type] || 0) + parseInt(amt));
-    saveUserData();
-    updateCubeDisplay();
+    saveUserData(); updateCubeDisplay();
 }
-
 function closeModal() {
     document.getElementById('cmd-modal').style.display = 'none';
     document.getElementById('modal-overlay').style.display = 'none';
 }
-
-// --- 인증 및 UI 전환 ---
 function handleLogin() {
     const id = document.getElementById('login-id').value.trim();
     const pw = document.getElementById('login-pw').value.trim();
@@ -269,22 +311,19 @@ function handleLogin() {
     if (users[id] && users[id].password === pw) {
         currentUser = id;
         localStorage.setItem(STORAGE_KEYS.SESSION, id);
-        loadUserData();
-        showMainApp();
+        loadUserData(); showMainApp();
     } else { alert("인증 실패"); }
 }
-
 function handleRegister() {
     const id = document.getElementById('login-id').value.trim();
     const pw = document.getElementById('login-pw').value.trim();
-    if (!id || !pw) return alert("입력 정보 부족");
+    if (!id || !pw) return alert("정보 부족");
     let users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS)) || {};
     if (users[id]) return alert("중복 아이디");
     users[id] = { password: pw };
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     alert("등록 완료");
 }
-
 function logout() { localStorage.removeItem(STORAGE_KEYS.SESSION); location.reload(); }
 function showLoginForm() { 
     document.getElementById('login-container').style.display = 'flex'; 
