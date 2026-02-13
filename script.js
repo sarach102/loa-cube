@@ -1,9 +1,4 @@
-/**
- * [2026-02-13] 최종 통합 버전
- * 1. 성공했던 기존 fetch 로직(fetchLoaData) 유지
- * 2. 통계 창: 로그아웃 버튼 왼쪽 배치 + 크기 확대 + 가독성 강화
- * 3. 타이틀: [ 큐브 ] 변경 및 텍스트 전체 Bold 적용
- */
+
 
 const LostarkApiKey = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyIsImtpZCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyJ9.eyJpc3MiOiJodHRwczovL2x1ZHkuZ2FtZS5vbnN0b3ZlLmNvbSIsImF1ZCI6Imh0dHBzOi8vbHVkeS5nYW1lLm9uc3RvdmUuY29tL3Jlc291cmNlcyIsImNsaWVudF9pZCI6IjEwMDAwMDAwMDAzMzkyMzYifQ.mJQIEV41gXwuDJzECKWhBGgYqIB3ikA0pYc82aKndYQE5ArlZ9r4ARyI8G-0ITpL6VndJZ2JtnQ89D5xNNy3XX5tk_07JLC5Zo4nBrd1S9o3YQxO6Tl9g4GStPGL-pjLAixv314i8leM8JVmbeSNhQecsPwRdoAFRnvuPJ5UX6bGs9qyRW-mOBLay47xOMUnmzvGCf8WnYzmwnldOejZNDLNjf0M2R4BAfdIrdXMASU8RL9JqoBZOjlyUcZmiNLlM2l3ShKuUAPdE0vRGcQfMh6B0l16Xkftlyau_b9iifjgAp9hVRXB4qnUJPK3gyD2oPSdLm_AWo_um1-Pc3R9-g";
 const DEFAULT_CHAR_IMG = "https://img.lostark.co.kr/armory/default_character.png";
@@ -39,7 +34,7 @@ function handleLogin() {
         localStorage.setItem(STORAGE_KEYS.SESSION, id);
         loadUserData();
         showMainApp();
-    } else { alert("인증 실패"); }
+    } else { alert("인증 실패: 아이디 또는 비밀번호를 확인하세요."); }
 }
 
 function handleRegister() {
@@ -47,7 +42,7 @@ function handleRegister() {
     const pw = document.getElementById('login-pw').value.trim();
     if (!id || !pw) return alert("입력 필요");
     let users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS)) || {};
-    if (users[id]) return alert("존재함");
+    if (users[id]) return alert("이미 존재하는 ID입니다.");
     users[id] = { password: pw };
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     alert("등록 완료");
@@ -80,7 +75,7 @@ function saveUserData() {
     renderAll();
 }
 
-/** 원정대 동기화 */
+/** 3. 원정대 동기화 (오류 진단 강화) */
 async function fetchLoaData() {
     const nameInput = document.getElementById('main-char').value.trim();
     if (!nameInput) return alert("캐릭터명을 입력하세요.");
@@ -89,15 +84,22 @@ async function fetchLoaData() {
         const res = await fetch(`https://developer-lostark.game.onstove.com/characters/${encodeURIComponent(nameInput)}/siblings`, {
             headers: { 'authorization': `Bearer ${LostarkApiKey}`, 'accept': 'application/json' }
         });
+
+        if (!res.ok) {
+            if (res.status === 401) throw new Error("API 키가 만료되었거나 올바르지 않습니다. (401)");
+            if (res.status === 429) throw new Error("요청이 너무 잦습니다. 잠시 후 다시 시도하세요. (429)");
+            if (res.status === 503) throw new Error("로아 API 서버 점검 중입니다. (503)");
+            throw new Error(`통신 에러가 발생했습니다. (Code: ${res.status})`);
+        }
+
         const siblings = await res.json();
-        if (!siblings) return;
+        if (!siblings || siblings.length === 0) return alert("캐릭터 정보를 찾을 수 없습니다.");
 
         const updatedList = [];
         for (const char of siblings) {
             if (excludedList.includes(char.CharacterName)) continue;
 
-            let rawLevel = char.ItemMaxLevel || char.ItemAvgLevel || "0";
-            let itemLevel = String(rawLevel).replace(/,/g, ""); 
+            let itemLevel = String(char.ItemMaxLevel || "0").replace(/,/g, ""); 
             let charImage = DEFAULT_CHAR_IMG;
 
             try {
@@ -123,8 +125,16 @@ async function fetchLoaData() {
         updatedList.sort((a, b) => parseFloat(b.level) - parseFloat(a.level));
         characters = updatedList;
         saveUserData();
-        alert("원정대 동기화 완료!");
-    } catch (e) { alert("동기화 실패"); }
+        alert("원정대 동기화 성공!");
+
+    } catch (e) {
+        console.error(e);
+        if (e.message.includes("Failed to fetch")) {
+            alert("동기화 실패: 깃허브 보안 정책(CORS) 차단 혹은 API 키 정지 상태입니다. 리포지토리를 Private으로 설정했는지 확인하세요.");
+        } else {
+            alert(`동기화 실패: ${e.message}`);
+        }
+    }
 }
 
 // --- 렌더링 ---
