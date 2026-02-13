@@ -1,7 +1,3 @@
-/**
- * [2026-02-14] LOA CUBE ARCHIVE - FULL CODE (Level Fix Focus)
- */
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
