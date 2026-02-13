@@ -1,7 +1,12 @@
+/**
+ * [2026-02-14] LOA CUBE ARCHIVE - GITHUB DEPLOY FULL CODE
+ * FIX: 레벨 파싱 강화, 모달 좌우 레이아웃 고정, ACTOR_ID 유지
+ */
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// 1. Firebase 설정
+// 1. Firebase 설정 (반드시 본인의 실제 키값으로 교체하세요)
 const firebaseConfig = {
     apiKey: "AIzaSyC_YOUR_ACTUAL_API_KEY", 
     authDomain: "lostark-manager-f4f67.firebaseapp.com",
@@ -14,7 +19,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 2. 로스트아크 API 및 데이터 정의
+// 2. 로스트아크 API 정의
 const LostarkApiKey = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyIsImtpZCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyJ9.eyJpc3MiOiJodHRwczovL2x1ZHkuZ2FtZS5vbnN0b3ZlLmNvbSIsImF1ZCI6Imh0dHBzOi8vbHVkeS5nYW1lLm9uc3RvdmUuY29tL3Jlc291cmNlcyIsImNsaWVudF9pZCI6IjEwMDAwMDAwMDAzMzkyMzYifQ.mJQIEV41gXwuDJzECKWhBGgYqIB3ikA0pYc82aKndYQE5ArlZ9r4ARyI8G-0ITpL6VndJZ2JtnQ89D5xNNy3XX5tk_07JLC5Zo4nBrd1S9o3YQxO6Tl9g4GStPGL-pjLAixv314i8leM8JVmbeSNhQecsPwRdoAFRnvuPJ5UX6bGs9qyRW-mOBLay47xOMUnmzvGCf8WnYzmwnldOejZNDLNjf0M2R4BAfdIrdXMASU8RL9JqoBZOjlyUcZmiNLlM2l3ShKuUAPdE0vRGcQfMh6B0l16Xkftlyau_b9iifjgAp9hVRXB4qnUJPK3gyD2oPSdLm_AWo_um1-Pc3R9-g";
 const DEFAULT_CHAR_IMG = "https://img.lostark.co.kr/armory/default_character.png";
 
@@ -39,6 +44,15 @@ let characters = [];
 let excludedList = [];
 let currentEditingId = null;
 
+// --- [공통 함수: 레벨 파싱 핵심] ---
+function parseLevel(lvl) {
+    if (!lvl) return 0;
+    // 쉼표 제거 및 숫자/마침표 외 모든 문자 제거
+    const cleaned = String(lvl).replace(/,/g, "").replace(/[^0-9.]/g, "");
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+}
+
 // --- [초기화] ---
 window.addEventListener('DOMContentLoaded', () => {
     const session = localStorage.getItem('LOA_CURRENT_ID');
@@ -49,15 +63,6 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('app-container').style.display = 'block';
     }
 });
-
-// --- [레벨 파싱 유틸리티: 가장 중요] ---
-function parseLevel(lvl) {
-    if (!lvl) return 0;
-    // 쉼표 제거 및 숫자가 아닌 모든 문자 제거 (단, 마침표는 유지)
-    const cleaned = String(lvl).replace(/,/g, "").replace(/[^0-9.]/g, "");
-    const num = parseFloat(cleaned);
-    return isNaN(num) ? 0 : num;
-}
 
 // --- [동기화 로직: 레벨 누락 해결] ---
 window.fetchLoaData = async function() {
@@ -74,11 +79,10 @@ window.fetchLoaData = async function() {
         for (const char of siblings) {
             if (excludedList.includes(char.CharacterName)) continue;
 
-            // 1차 레벨 데이터 (siblings에서 가져옴)
             let accurateLevel = parseLevel(char.ItemMaxLevel || char.ItemAvgLevel);
             let charImage = DEFAULT_CHAR_IMG;
 
-            // 2차 상세 데이터 (Profiles API로 소수점 및 이미지 보정)
+            // 상세 데이터로 레벨 보정
             try {
                 const pRes = await fetch(`https://developer-lostark.game.onstove.com/armories/characters/${encodeURIComponent(char.CharacterName)}/profiles`, {
                     headers: { 'authorization': `Bearer ${LostarkApiKey}`, 'accept': 'application/json' }
@@ -94,16 +98,15 @@ window.fetchLoaData = async function() {
                 actorId: `ACTOR_${char.CharacterName}`,
                 name: char.CharacterName, 
                 server: char.ServerName, 
-                level: accurateLevel, // 숫자로 저장
+                level: accurateLevel, 
                 job: char.CharacterClassName, 
                 image: charImage,
                 cubes: characters.find(c => c.name === char.CharacterName)?.cubes || ALL_TYPES.reduce((acc, t) => ({...acc, [t]: 0}), {})
             });
         }
-        // 레벨순 정렬
         characters = updated.sort((a,b) => b.level - a.level);
         await saveUserData(); 
-        alert("레벨 동기화 및 원정대 로드 완료!");
+        alert("원정대 동기화 완료!");
     } catch (e) { alert("API 오류가 발생했습니다."); }
 };
 
@@ -116,7 +119,6 @@ window.renderCharacters = function() {
         const div = document.createElement('div');
         div.className = 'char-card';
         
-        // 레벨 표시 포맷
         const dispLvl = char.level > 0 ? char.level.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "?.??";
         
         const gumHtml = GUM_TYPES.map(t => `<div style="display:flex; justify-content:space-between; font-size:11px; color:${char.cubes[t]>0?'#00ff41':'#444'};"><span>${t}:</span><b>${char.cubes[t]||0}</b></div>`).join('');
@@ -139,43 +141,35 @@ window.renderCharacters = function() {
     });
 };
 
-// --- [모달 UI: 요청하신 금제 / 해금 좌우 정렬] ---
+// --- [모달 UI: 좌 금제 / 우 해금 고정 레이아웃] ---
 window.updateCubeDisplay = function() {
     const char = characters.find(c => c.actorId === currentEditingId);
     if(!char) return;
 
-    // 모달 내부를 감싸는 컨테이너 스타일 강제 설정
     const container = document.querySelector('.cube-grid-container');
     if (container) {
-        container.style.display = 'grid';
-        container.style.gridTemplateColumns = '1fr 1fr';
-        container.style.gap = '15px';
-        container.style.padding = '10px';
+        container.style.cssText = "display:grid; grid-template-columns: 1fr 1fr; gap:15px; padding:10px;";
     }
 
     const createItem = (t, color) => `
-        <div class="cube-item" style="border-color:${char.cubes[t]>0?color:'#333'}; margin-bottom:8px; width:100%; box-sizing:border-box;" 
+        <div class="cube-item" style="border-color:${char.cubes[t]>0?color:'#333'}; margin-bottom:8px; width:100%; box-sizing:border-box; cursor:pointer;" 
              onclick="window.modifyCube('${t}',1)" oncontextmenu="event.preventDefault();window.modifyCube('${t}',-1)">
             <div style="font-size:10px; color:#666;">${t}</div>
             <div style="font-size:22px; color:${char.cubes[t]>0?color:'#444'}"><b>${char.cubes[t]}</b></div>
         </div>`;
 
-    // 왼쪽 열: 금제
     const leftGrid = document.getElementById('grid-gum');
-    leftGrid.style.display = 'flex';
-    leftGrid.style.flexDirection = 'column';
-    leftGrid.innerHTML = `<div style="color:#00ff41; font-size:12px; margin-bottom:10px; text-align:center; border-bottom:1px solid #333;">금제 (1-5)</div>` + 
+    leftGrid.style.cssText = "display:flex; flex-direction:column;";
+    leftGrid.innerHTML = `<div style="color:#00ff41; font-size:12px; margin-bottom:10px; text-align:center; border-bottom:1px solid #333; padding-bottom:5px;">금제 (1-5)</div>` + 
                           GUM_TYPES.map(t => createItem(t, '#00ff41')).join('');
 
-    // 오른쪽 열: 해금
     const rightGrid = document.getElementById('grid-hae');
-    rightGrid.style.display = 'flex';
-    rightGrid.style.flexDirection = 'column';
-    rightGrid.innerHTML = `<div style="color:#00ccff; font-size:12px; margin-bottom:10px; text-align:center; border-bottom:1px solid #333;">해금 (1-4)</div>` + 
+    rightGrid.style.cssText = "display:flex; flex-direction:column;";
+    rightGrid.innerHTML = `<div style="color:#00ccff; font-size:12px; margin-bottom:10px; text-align:center; border-bottom:1px solid #333; padding-bottom:5px;">해금 (1-4)</div>` + 
                            HAE_TYPES.map(t => createItem(t, '#00ccff')).join('');
 };
 
-// --- [통계 렌더링: 디자인 보존] ---
+// --- [통계 렌더링] ---
 window.renderStats = function() {
     const headerTitleSection = document.querySelector('.header-section > div:first-child');
     if (!headerTitleSection) return;
@@ -242,7 +236,7 @@ window.renderStats = function() {
         </div>`;
 };
 
-// --- [Firebase 및 공통함수] ---
+// --- [Firebase 및 데이터 제어] ---
 async function loadUserData() {
     const docSnap = await getDoc(doc(db, "users", currentUser));
     if (docSnap.exists()) {
@@ -257,7 +251,7 @@ async function saveUserData() {
     if (!currentUser) return;
     const docRef = doc(db, "users", currentUser);
     const snap = await getDoc(docRef);
-    await setDoc(docRef, { password: snap.data().password, characters, excludedList }, { merge: true });
+    await setDoc(docRef, { password: snap.data()?.password || "", characters, excludedList }, { merge: true });
     window.renderAll();
 }
 
@@ -267,25 +261,28 @@ window.closeModal = () => { document.getElementById('cmd-modal').style.display =
 window.modifyCube = async (type, amt) => { const char = characters.find(c => c.actorId === currentEditingId); char.cubes[type] = Math.max(0, (char.cubes[type]||0) + parseInt(amt)); saveUserData(); window.updateCubeDisplay(); };
 window.handleLogin = async function() {
     const id = document.getElementById('login-id').value.trim(), pw = document.getElementById('login-pw').value.trim();
+    if(!id) return;
     const docSnap = await getDoc(doc(db, "users", id));
     if (docSnap.exists() && docSnap.data().password === pw) {
         currentUser = id; localStorage.setItem('LOA_CURRENT_ID', id);
         await loadUserData(); document.getElementById('login-container').style.display='none'; document.getElementById('app-container').style.display='block';
-    } else alert("로그인 실패");
+    } else alert("아이디 또는 비밀번호가 틀립니다.");
 };
 window.handleRegister = async function() {
     const id = document.getElementById('login-id').value.trim(), pw = document.getElementById('login-pw').value.trim();
     if(!id || !pw) return;
     await setDoc(doc(db, "users", id), { password: pw, characters: [], excludedList: [] });
-    alert("가입 성공");
+    alert("가입 성공! 로그인 해주세요.");
 };
 window.importData = function() {
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
     input.onchange = e => {
         const reader = new FileReader();
         reader.onload = async ev => {
-            const data = JSON.parse(ev.target.result);
-            if (data.characters) { characters = data.characters; excludedList = data.excludedList || []; await saveUserData(); alert("복구 완료"); }
+            try {
+                const data = JSON.parse(ev.target.result);
+                if (data.characters) { characters = data.characters; excludedList = data.excludedList || []; await saveUserData(); alert("복구 완료"); }
+            } catch(e) { alert("잘못된 파일입니다."); }
         };
         reader.readAsText(e.target.files[0]);
     };
@@ -296,7 +293,7 @@ window.exportData = function() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `LOA_BACKUP.json`; a.click();
 };
 window.logout = () => { localStorage.removeItem('LOA_CURRENT_ID'); location.reload(); };
-window.removeCharacter = (id, name, ev) => { ev.stopPropagation(); if(confirm("제외할까요?")) { excludedList.push(name); characters = characters.filter(c => c.actorId !== id); saveUserData(); } };
+window.removeCharacter = (id, name, ev) => { ev.stopPropagation(); if(confirm(`${name} 캐릭터를 제외할까요?`)) { excludedList.push(name); characters = characters.filter(c => c.actorId !== id); saveUserData(); } };
 
 function calculateCombinedGems(baseGems) {
     let gems = { ...baseGems };
