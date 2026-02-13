@@ -1,5 +1,3 @@
-
-
 const LostarkApiKey = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyIsImtpZCI6IktYMk40TkRDSTJ5NTA5NWpjTWk5TllqY2lyZyJ9.eyJpc3MiOiJodHRwczovL2x1ZHkuZ2FtZS5vbnN0b3ZlLmNvbSIsImF1ZCI6Imh0dHBzOi8vbHVkeS5nYW1lLm9uc3RvdmUuY29tL3Jlc291cmNlcyIsImNsaWVudF9pZCI6IjEwMDAwMDAwMDAzMzkyMzYifQ.mJQIEV41gXwuDJzECKWhBGgYqIB3ikA0pYc82aKndYQE5ArlZ9r4ARyI8G-0ITpL6VndJZ2JtnQ89D5xNNy3XX5tk_07JLC5Zo4nBrd1S9o3YQxO6Tl9g4GStPGL-pjLAixv314i8leM8JVmbeSNhQecsPwRdoAFRnvuPJ5UX6bGs9qyRW-mOBLay47xOMUnmzvGCf8WnYzmwnldOejZNDLNjf0M2R4BAfdIrdXMASU8RL9JqoBZOjlyUcZmiNLlM2l3ShKuUAPdE0vRGcQfMh6B0l16Xkftlyau_b9iifjgAp9hVRXB4qnUJPK3gyD2oPSdLm_AWo_um1-Pc3R9-g";
 const DEFAULT_CHAR_IMG = "https://img.lostark.co.kr/armory/default_character.png";
 
@@ -34,15 +32,15 @@ function handleLogin() {
         localStorage.setItem(STORAGE_KEYS.SESSION, id);
         loadUserData();
         showMainApp();
-    } else { alert("인증 실패: 아이디 또는 비밀번호를 확인하세요."); }
+    } else { alert("인증 실패: 정보를 확인하세요."); }
 }
 
 function handleRegister() {
     const id = document.getElementById('login-id').value.trim();
     const pw = document.getElementById('login-pw').value.trim();
-    if (!id || !pw) return alert("입력 필요");
+    if (!id || !pw) return alert("아이디와 비밀번호를 입력하세요.");
     let users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS)) || {};
-    if (users[id]) return alert("이미 존재하는 ID입니다.");
+    if (users[id]) return alert("이미 존재하는 아이디입니다.");
     users[id] = { password: pw };
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     alert("등록 완료");
@@ -75,7 +73,7 @@ function saveUserData() {
     renderAll();
 }
 
-/** 3. 원정대 동기화 (오류 진단 강화) */
+/** 3. 원정대 동기화 (레벨 버그 수정 및 오류 진단) */
 async function fetchLoaData() {
     const nameInput = document.getElementById('main-char').value.trim();
     if (!nameInput) return alert("캐릭터명을 입력하세요.");
@@ -86,10 +84,10 @@ async function fetchLoaData() {
         });
 
         if (!res.ok) {
-            if (res.status === 401) throw new Error("API 키가 만료되었거나 올바르지 않습니다. (401)");
-            if (res.status === 429) throw new Error("요청이 너무 잦습니다. 잠시 후 다시 시도하세요. (429)");
-            if (res.status === 503) throw new Error("로아 API 서버 점검 중입니다. (503)");
-            throw new Error(`통신 에러가 발생했습니다. (Code: ${res.status})`);
+            if (res.status === 401) throw new Error("API 키 만료 또는 권한 없음 (401)");
+            if (res.status === 429) throw new Error("너무 많은 요청이 발생했습니다 (429)");
+            if (res.status === 503) throw new Error("서버 점검 중입니다 (503)");
+            throw new Error(`통신 실패 (Code: ${res.status})`);
         }
 
         const siblings = await res.json();
@@ -99,19 +97,27 @@ async function fetchLoaData() {
         for (const char of siblings) {
             if (excludedList.includes(char.CharacterName)) continue;
 
-            let itemLevel = String(char.ItemMaxLevel || "0").replace(/,/g, ""); 
+            // [레벨 수정 핵심] 문자열로 변환 후 쉼표 제거하여 숫자로 정규화
+            let rawLevel = char.ItemMaxLevel || char.ItemAvgLevel || "0";
+            let itemLevel = String(rawLevel).replace(/,/g, ""); 
             let charImage = DEFAULT_CHAR_IMG;
 
             try {
+                // 신규 캐릭터를 위해 상세 프로필 조회 (레벨 데이터 2차 검증)
                 const pRes = await fetch(`https://developer-lostark.game.onstove.com/armories/characters/${encodeURIComponent(char.CharacterName)}/profiles`, {
                     headers: { 'authorization': `Bearer ${LostarkApiKey}`, 'accept': 'application/json' }
                 });
-                const prof = await pRes.json();
-                if (prof && prof.CharacterImage) charImage = prof.CharacterImage;
-            } catch(e) {}
+                if (pRes.ok) {
+                    const prof = await pRes.json();
+                    if (prof) {
+                        if (prof.CharacterImage) charImage = prof.CharacterImage;
+                        if (prof.ItemMaxLevel) itemLevel = String(prof.ItemMaxLevel).replace(/,/g, "");
+                    }
+                }
+            } catch(e) { console.warn(`${char.CharacterName} 프로필 연동 실패`); }
 
             updatedList.push({
-                actorId: `ACTOR_${char.CharacterName}`,
+                actorId: `ACTOR_${char.CharacterName}`, // 고유 ID 유지 [2026-02-09]
                 name: char.CharacterName,
                 server: char.ServerName,
                 level: itemLevel,
@@ -122,6 +128,7 @@ async function fetchLoaData() {
             });
         }
 
+        // 아이템 레벨 순 정렬
         updatedList.sort((a, b) => parseFloat(b.level) - parseFloat(a.level));
         characters = updatedList;
         saveUserData();
@@ -130,7 +137,7 @@ async function fetchLoaData() {
     } catch (e) {
         console.error(e);
         if (e.message.includes("Failed to fetch")) {
-            alert("동기화 실패: 깃허브 보안 정책(CORS) 차단 혹은 API 키 정지 상태입니다. 리포지토리를 Private으로 설정했는지 확인하세요.");
+            alert("동기화 실패: 깃허브 보안 정책(CORS) 또는 API 키 삭제 문제입니다. 리포지토리를 Private으로 설정했는지 확인하세요.");
         } else {
             alert(`동기화 실패: ${e.message}`);
         }
@@ -196,8 +203,9 @@ function renderCharacters() {
         const div = document.createElement('div');
         div.className = 'char-card';
         
+        // 레벨 표시 안전장치: 숫자가 아니면 ?.?? 표시
         const numLevel = parseFloat(char.level);
-        const displayLevel = isNaN(numLevel) ? "0.00" : numLevel.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const displayLevel = isNaN(numLevel) || numLevel === 0 ? "?.??" : numLevel.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
         const gumHtml = GUM_TYPES.map(t => {
             const count = char.cubes[t] || 0;
